@@ -67,3 +67,18 @@ This demo has no authentication and should run locally.
 The upstream repository was empty. The initial contract and implementation are
 on `feat/platform-iot-ui`; nothing has been pushed to main. Coordinate the foundation
 merge with Developer 2 before treating the contract as shared and frozen.
+
+## Review and integration order
+
+1. Review `feat/shared-foundation` against `main`: shared Pydantic models,
+   configuration, packaging and the contract document.
+2. Merge the agreed foundation through a pull request. Developer 2 updates their
+   branch from `main` and imports these models.
+3. Review `feat/platform-iot-ui` for the application, dashboard and platform tests.
+4. After Developer 2's implementation is merged, validate the real adapter and
+   cross-mode session isolation before enabling it.
+
+The platform branch includes the foundation branch. No shared history has been
+rewritten. GitHub Actions runs platform tests on Python 3.11 and 3.13. The regular
+test suite includes temporary local API and Streamlit servers, so it needs local
+loopback sockets. All subprocesses and temporary databases are cleaned up.

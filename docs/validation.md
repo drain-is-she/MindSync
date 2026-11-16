@@ -3,7 +3,7 @@
 Validated locally on 2026-11-16 with Python 3.13.11 in `.venv`.
 Python 3.11 was not installed, so that target runtime remains unverified.
 
-`python -m pytest -q`: **33 passed, 0 failed**.
+`python -m pytest -q`: **34 passed, 0 failed**.
 
 Coverage includes fresh/idempotent migrations and foreign keys; deterministic,
 idempotent seeding; exact heart-rate and sleep statistics; empty/stale/missing
@@ -29,3 +29,7 @@ validated with AppTest and a mocked API; a full interactive browser session was
 not tested. No external LLM calls were made. The real agent and RAG are not part
 of this branch and have not been validated. Phrase-based safety routing is not
 clinically validated. The contract requires joint agreement before integration.
+
+The live smoke test is now checked in as `tests/platform/test_live.py` and runs
+with the regular suite. GitHub Actions is configured for Python 3.11 and 3.13;
+remote CI results remain unverified until the branches can be pushed.
