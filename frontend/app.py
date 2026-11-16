@@ -69,6 +69,7 @@ def main():
             if api("POST", f"/profiles/{profile}/check-ins", json={"mood": mood, "note": note}):
                 st.success("Check-in saved")
     st.subheader("Support chat")
+    st.caption("Local, deterministic guidance with cited sources. No external language model. Try sleep, worries, or breathing.")
     history_key = f"chat_{profile}_{MODES[mode_label]}_{consent}"
     messages = st.session_state.setdefault(history_key, [])
     session = st.session_state.setdefault(history_key+"_session", str(uuid.uuid4()))

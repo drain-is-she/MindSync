@@ -26,7 +26,7 @@ def db(tmp_path):
 
 @pytest.fixture
 def client(tmp_path):
-    with TestClient(create_app(Settings(db_path=tmp_path/'api.db'))) as client:
+    with TestClient(create_app(Settings(db_path=tmp_path/'api.db', agent='mock'))) as client:
         yield client
 
 def request_body(**updates):

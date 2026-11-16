@@ -1,3 +1,6 @@
+> Historical platform-stage document. The local agent is now integrated; see
+> [the README](../README.md) and [agent design](agent.md) for current behavior.
+
 # Platform architecture
 
 Streamlit → FastAPI → SQLite supplies synthetic dashboard data independently of

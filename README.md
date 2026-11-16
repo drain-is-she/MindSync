@@ -1,12 +1,12 @@
-# MindSync AI — Developer 1 platform
+# MindSync AI
 
-FastAPI + SQLite + synthetic telemetry + Streamlit, runnable without an LLM or
-Developer 2 code. All measurements are **SIMULATED DATA**. This is a local,
-non-diagnostic wellbeing prototype.
+A local wellbeing prototype combining FastAPI, SQLite, synthetic telemetry,
+Streamlit, and a LangGraph agent with cited NHS guidance. All measurements are
+**SIMULATED DATA**. This application does not diagnose conditions.
 
-## Run
+## Start
 
-Python 3.11+ is supported. From this directory:
+Python 3.11+:
 
 ```bash
 python3 -m venv .venv
@@ -15,83 +15,75 @@ pip install -e .
 uvicorn mindsync.platform.api:app --host 127.0.0.1 --port 8000
 ```
 
-In a second terminal with the same environment activated:
+In another terminal with that environment activated:
 
 ```bash
-streamlit run frontend/app.py
+streamlit run frontend/app.py --server.address 127.0.0.1
 ```
 
-In an optional third terminal:
+Optionally publish new simulated readings:
 
 ```bash
 python -m mindsync.simulator.publisher --profile student_a
 ```
 
-Startup migrates `runtime/mindsync.db` and seeds three synthetic profiles.
-Student A models exam-week reduced sleep; B models physical activity; C models
-missing/noisy readings and a stale sensor. These describe scenarios, not diagnoses.
-Use `--count 1` for a single telemetry packet. Ctrl-C stops the publisher.
+Startup migrates `runtime/mindsync.db` and seeds three synthetic profiles with
+seven days of history. Student A models exam-week sleep changes, B physical
+activity, and C missing/noisy readings. Existing data is retained. Use `--count 1`
+to send a single telemetry packet. The dashboard offers trends, mood check-ins,
+chat, citations, tool traces, and an A/B/C comparison.
 
-Configuration environment variables are listed in `.env.example`. The file is a
-template and is not loaded automatically; export values in your shell.
-`MINDSYNC_SEED_DEMO=false` disables automatic demo creation.
-`python -m mindsync.simulator.seed` seeds explicitly and is idempotent.
-For reproducible fixtures call `seed(path, now=<fixed aware datetime>, seed_value=42)`.
-To obtain a fresh demo later, use a new `MINDSYNC_DB_PATH`; existing data is retained.
+## Agent and experiment modes
 
-The dashboard includes current readings, pulse and sleep history, mood check-in,
-chat, citations, tool traces, and three independent A/B/C requests. B and C require
-consent. A never receives vitals through the context provider. The mock is clearly
-labelled, performs real context calls, and does not fabricate RAG sources.
+The default `MINDSYNC_AGENT=real` selects the implemented LangGraph workflow:
+context collection → local retrieval → grounded response. It uses whole-word
+retrieval over three curated, source-linked NHS guidance summaries and generates
+deterministic exercises. It requires **no API key or network service**. This is a
+small retrieval-based assistant, not a general-purpose LLM or semantic vector RAG.
+Ask about sleep, worries/exams, or breathing. Unmatched questions receive an
+honest fallback; diagnostic and medication requests are declined.
 
-## Test
+| Mode | Context used by the agent | Consent |
+| --- | --- | --- |
+| A: Text only | Message and prior topic in this scope | Not required |
+| B: Current vitals | Message plus fresh synthetic reading | Required |
+| C: Full context | Message, fresh reading, seven-day summary | Required |
+
+Exercises are selected from the message, never inferred from physiological
+values. Sources and tool traces correspond to actual retrieval and context calls.
+A topic-only memory supports follow-ups such as “continue”; it expires after 30
+minutes and is limited to 256 session scopes. It is isolated by session, profile,
+mode, and consent. No conversation text or vitals are retained in agent memory.
+Memory is process-local and resets on restart; use one backend worker for continuity.
+
+For the original platform-only stub, explicitly set `MINDSYNC_AGENT=mock`.
+Configuration is shown in `.env.example`; export values in your shell because
+that file is not automatically loaded. `MINDSYNC_SEED_DEMO=false` disables seeding.
+
+## Validate
 
 ```bash
 pytest -q
+python -m mindsync.evaluation
+pip check
 ```
 
-Tests run on temporary SQLite databases and use no external LLM. See
-`docs/contracts.md` for the shared types, API semantics, and Developer 2 entry point.
-After Developer 2 is merged, set `MINDSYNC_AGENT=real` and restart; no contract
-changes should be needed. AI dependencies must be added in coordination with that
-implementation. Real-agent functionality is not included in this platform branch.
+Tests cover storage, simulator retries, consent restrictions, real-agent retrieval,
+citations, topic isolation/expiry, missing tools, urgent routing, HTTP integration,
+and Streamlit interaction. The offline evaluation checks 15 prompt/mode cases and
+exits nonzero on failure. CI runs tests and evaluation on Python 3.11 and 3.13.
+These are engineering checks, not a clinical efficacy assessment.
 
-## Scope and limits
+## Boundaries
 
-The safety gate routes explicit urgent English disclosures to human assistance,
-bypassing the ordinary agent. It is conservative phrase matching, not clinically
-validated, and cannot guarantee detection. Synthetic vital values never determine
-the safety route. See `docs/architecture.md` for boundaries and limitations.
-This demo has no authentication and should run locally.
+Run locally: there is no real-user authentication or production hosting setup.
+Mood notes are stored in local SQLite. Synthetic vitals do not establish a person's
+mental or physical condition. The urgent-support gate uses conservative English
+phrase matching and can miss paraphrases or other languages; it is not clinically
+validated. It directs explicit urgent disclosures to human help without contacting
+anyone automatically. Source summaries were checked on 2026-11-16; see
+`src/mindsync/ai/knowledge.py` for exact provenance and `docs/agent.md` for design.
 
-The upstream repository was empty. The initial contract and implementation are
-on `feat/platform-iot-ui`; nothing has been pushed to main. Coordinate the foundation
-merge with Developer 2 before treating the contract as shared and frozen.
-
-## Review and integration order
-
-1. Review `feat/shared-foundation` against `main`: shared Pydantic models,
-   configuration, packaging and the contract document.
-2. Merge the agreed foundation through a pull request. Developer 2 updates their
-   branch from `main` and imports these models.
-3. Review `feat/platform-iot-ui` for the application, dashboard and platform tests.
-4. After Developer 2's implementation is merged, validate the real adapter and
-   cross-mode session isolation before enabling it.
-
-The platform branch includes the foundation branch. No shared history has been
-rewritten. GitHub Actions runs platform tests on Python 3.11 and 3.13. The regular
-test suite includes temporary local API and Streamlit servers, so it needs local
-loopback sockets. All subprocesses and temporary databases are cleaned up.
-
-## Operational details
-
-The backend derives the agent's session key from the caller's session ID, profile,
-mode and consent. Reusing an API session ID in another mode therefore does not
-reuse agent memory. Agents must use the supplied session key and context provider.
-
-Telemetry retries with the same profile and timestamp retain the first stored
-packet and return that stored packet, even when retry values differ. A publisher
-run with `--count N` exits 1 if any delivery fails, 0 if all succeed, or 130 on
-Ctrl-C; zero count runs continuously. Failures do not silently look successful.
-
-See `docs/platform-handoff.md` for the completed scope and integration checklist.
+The original developer handoff and workflow documents describe the archived
+platform development history. This README and `docs/agent.md` describe the
+completed local integration.

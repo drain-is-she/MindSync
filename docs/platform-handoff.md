@@ -1,3 +1,6 @@
+> Historical platform-stage document. The local agent is now integrated; see
+> [the README](../README.md) and [agent design](agent.md) for current behavior.
+
 # Developer 1 handoff
 
 ## Completed chunks
