@@ -194,3 +194,69 @@ def test_agent_failures(tmp_path, failure, expected):
         response = client.post('/chat', json=request_body())
         assert response.status_code == expected
         assert 'private details' not in response.text
+
+
+def test_conflicting_duplicate_returns_stored_values(client):
+    packet = {'profile_id': 'student_a',
+              'measured_at': (datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat(),
+              'heart_rate_bpm': 72}
+    first = client.post('/telemetry', json=packet)
+    repeated = client.post('/telemetry', json={**packet, 'heart_rate_bpm': 99})
+    assert first.status_code == repeated.status_code == 200
+    assert repeated.json() == first.json()
+    assert client.get('/profiles/student_a/vitals').json()['current']['heart_rate_bpm'] == 72
+
+
+def test_agent_sessions_partition_context_and_keep_continuity(tmp_path):
+    observed = []
+
+    async def recorder(request, provider):
+        observed.append(request.session_id)
+        return AgentOutput(reply='Session captured')
+
+    with TestClient(create_app(Settings(db_path=tmp_path/'sessions.db'), agent=recorder)) as client:
+        body = request_body()
+        variants = [body, body, {**body, 'mode': 'current_vitals', 'consent_to_use_vitals': True},
+                    {**body, 'mode': 'full_context', 'consent_to_use_vitals': True},
+                    {**body, 'profile_id': 'student_b'},
+                    {**body, 'consent_to_use_vitals': True},
+                    {**body, 'session_id': 'another-session'}]
+        for variant in variants:
+            assert client.post('/chat', json=variant).status_code == 200
+    assert observed[0] == observed[1]
+    assert len(set(observed)) == 6
+    assert all(value != body['session_id'] for value in observed)
+
+
+def test_dense_samples_cannot_hide_history_gaps(tmp_path):
+    path = tmp_path/'dense.db'
+    migrate(path)
+    with connect(path) as conn:
+        conn.execute("INSERT INTO profiles VALUES ('p', 'P', 'test')")
+    repo = Repository(path)
+    for seconds in range(100):
+        repo.save_vital(VitalReading(profile_id='p', measured_at=NOW-timedelta(seconds=seconds),
+                                    heart_rate_bpm=70, spo2_percent=98,
+                                    respiratory_rate_per_min=15, activity_level=.1))
+    summary = SQLiteContextProvider(repo, clock=lambda: NOW).get_history_summary('p')
+    assert summary.sample_count == 100
+    assert summary.missing_fraction == pytest.approx(167/168)
+
+
+def test_failed_migration_rolls_back_and_can_retry(tmp_path, monkeypatch):
+    import mindsync.storage.migrations as migrations
+    scripts = tmp_path / 'migrations'
+    scripts.mkdir()
+    script = scripts / '001_test.sql'
+    script.write_text('CREATE TABLE example (id INTEGER); INVALID SQL;')
+    monkeypatch.setattr(migrations, '__file__', str(tmp_path/'migrations.py'))
+    path = tmp_path/'rollback.db'
+    with pytest.raises(sqlite3.OperationalError):
+        migrations.migrate(path)
+    with connect(path) as conn:
+        assert conn.execute("SELECT name FROM sqlite_master WHERE name='example'").fetchone() is None
+        assert conn.execute('SELECT COUNT(*) FROM schema_migrations').fetchone()[0] == 0
+    script.write_text('CREATE TABLE example (id INTEGER);')
+    migrations.migrate(path)
+    with connect(path) as conn:
+        assert conn.execute('SELECT COUNT(*) FROM schema_migrations').fetchone()[0] == 1

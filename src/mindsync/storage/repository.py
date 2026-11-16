@@ -20,6 +20,11 @@ class Repository:
     def save_vital(self, reading: VitalReading):
         with connect(self.path) as conn:
             insert_vital(conn, reading)
+            row = conn.execute(
+                "SELECT * FROM vital_samples WHERE profile_id=? AND measured_at=?",
+                (reading.profile_id, utc_string(reading.measured_at)),
+            ).fetchone()
+            return VitalReading(**{k: row[k] for k in VitalReading.model_fields})
 
     def samples(self, profile_id, start, end):
         with connect(self.path) as conn:

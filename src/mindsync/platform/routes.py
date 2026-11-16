@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import hashlib
+import json
 from datetime import datetime, timedelta, timezone
 from time import perf_counter
 from fastapi import APIRouter, HTTPException, Request
@@ -39,8 +41,7 @@ def telemetry(reading: VitalReading, request: Request):
         raise HTTPException(422, "Only simulated measurements are accepted")
     if reading.measured_at > datetime.now(timezone.utc):
         raise HTTPException(422, "Future measurements are not accepted")
-    request.app.state.repository.save_vital(reading)
-    return reading
+    return request.app.state.repository.save_vital(reading)
 
 class CheckIn(Contract):
     mood: int = Field(ge=1, le=5, strict=True)
@@ -68,8 +69,13 @@ async def chat(body: ChatRequest, request: Request):
         result = AgentOutput(reply=URGENT_REPLY)
     else:
         context = RestrictedContextProvider(request.app.state.context, body)
+        # Keep memory keys isolated even when direct API clients reuse session IDs.
+        scope = json.dumps([body.session_id, body.profile_id, body.mode.value,
+                            body.consent_to_use_vitals], separators=(",", ":"))
+        agent_request = body.model_copy(update={
+            "session_id": hashlib.sha256(scope.encode("utf-8")).hexdigest()})
         try:
-            result = AgentOutput.model_validate(await asyncio.wait_for(request.app.state.agent(body, context), timeout=request.app.state.settings.agent_timeout_seconds))
+            result = AgentOutput.model_validate(await asyncio.wait_for(request.app.state.agent(agent_request, context), timeout=request.app.state.settings.agent_timeout_seconds))
         except TimeoutError:
             raise HTTPException(504, "Agent timed out; please try again") from None
         except Exception:
