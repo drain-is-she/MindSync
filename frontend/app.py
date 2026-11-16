@@ -56,7 +56,7 @@ def main():
         st.subheader("Seven-day history")
         if data["history"]:
             frame = pd.DataFrame(data["history"])
-            frame["measured_at"] = pd.to_datetime(frame["measured_at"])
+            frame["measured_at"] = pd.to_datetime(frame["measured_at"], format="ISO8601", utc=True)
             st.line_chart(frame.set_index("measured_at")[["heart_rate_bpm"]])
         if data["sleep"]:
             st.bar_chart(pd.DataFrame(data["sleep"]).set_index("sleep_date")[["hours"]])

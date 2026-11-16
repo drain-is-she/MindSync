@@ -38,3 +38,36 @@ def test_frontend_shows_api_error():
         app = AppTest.from_file(str(APP)).run()
         assert not app.exception
         assert 'server unavailable' in app.error[0].value
+
+
+def test_dashboard_with_real_seeded_api_and_live_telemetry(tmp_path):
+    from datetime import datetime, timezone
+    from fastapi.testclient import TestClient
+    from mindsync.config import Settings
+    from mindsync.platform.api import create_app
+
+    with TestClient(create_app(Settings(db_path=tmp_path/'dashboard.db'))) as client:
+        client.post('/telemetry', json={
+            'profile_id': 'student_a', 'measured_at': datetime.now(timezone.utc).isoformat(),
+            'heart_rate_bpm': 75, 'spo2_percent': 98,
+            'respiratory_rate_per_min': 15, 'activity_level': .2})
+
+        def request(method, url, **kwargs):
+            from urllib.parse import urlsplit
+            kwargs.pop('timeout', None)
+            return client.request(method, urlsplit(url).path, **kwargs)
+
+        with patch('httpx.request', side_effect=request):
+            app = AppTest.from_file(str(APP)).run()
+            assert not app.exception
+            assert len(app.metric) == 4
+            app.chat_input[0].set_value('I have an exam tomorrow').run()
+            assert not app.exception
+            assert len(app.chat_message) == 2
+            app.selectbox[1].select('B · Current vitals').run()
+            app.chat_input[0].set_value('Please help').run()
+            assert 'Enable consent' in app.error[0].value
+            app.checkbox[0].check().run()
+            app.chat_input[0].set_value('Please help').run()
+            assert not app.exception
+            assert len(app.chat_message) == 2

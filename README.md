@@ -82,3 +82,16 @@ The platform branch includes the foundation branch. No shared history has been
 rewritten. GitHub Actions runs platform tests on Python 3.11 and 3.13. The regular
 test suite includes temporary local API and Streamlit servers, so it needs local
 loopback sockets. All subprocesses and temporary databases are cleaned up.
+
+## Operational details
+
+The backend derives the agent's session key from the caller's session ID, profile,
+mode and consent. Reusing an API session ID in another mode therefore does not
+reuse agent memory. Agents must use the supplied session key and context provider.
+
+Telemetry retries with the same profile and timestamp retain the first stored
+packet and return that stored packet, even when retry values differ. A publisher
+run with `--count N` exits 1 if any delivery fails, 0 if all succeed, or 130 on
+Ctrl-C; zero count runs continuously. Failures do not silently look successful.
+
+See `docs/platform-handoff.md` for the completed scope and integration checklist.
